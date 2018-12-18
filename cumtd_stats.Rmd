@@ -144,7 +144,7 @@ histogram(~y | x,
 ```
 
 ### Explore for yourself!
-```{r setup, echo=FALSE}
+```{r setup2, echo=FALSE}
 library(magrittr)
 library(tidyverse)
 library(plotly)
