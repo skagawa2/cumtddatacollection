@@ -11,15 +11,13 @@ title: "CUMTD Data Collection"
 knitr::opts_chunk$set(echo = TRUE)
 library(DBI)
 library(lattice)
-library(shiny)
-library(magrittr)
-library(tidyverse)
-db_file <- "../../data/cumtddatacollection/stop_times.db"
+db_file <- "stop_times.db"
 conn <- dbConnect(RSQLite::SQLite(), db_file)
 date <- as.character(Sys.Date())
 
 command <- paste0("SELECT arrival_time,\"", date, "\",route_id FROM stop_times WHERE \"", date, "\" IS NOT NULL")
 all_vals <- dbGetQuery(conn, command)
+
 if (date %in% colnames(all_vals)) {
 	all_times <- all_vals[['arrival_time']]
 	all_delays <- all_vals[[date]]
@@ -27,6 +25,7 @@ if (date %in% colnames(all_vals)) {
 }
 command2 <- paste0("SELECT arrival_time, delay, route_id FROM unscheduled_stops WHERE arrival_date LIKE \"", date, "\"")
 all_vals <- dbGetQuery(conn, command2)
+dbDisconnect(conn)
 if (exists("all_times")) {
 	all_times <- c(all_times, all_vals[['arrival_time']])
 	all_delays <- c(all_delays, all_vals[['delay']])
@@ -36,6 +35,7 @@ if (exists("all_times")) {
 	all_delays <- all_vals[['delay']]
 	all_routes <- all_vals[['route_id']]
 }
+head(all_delays)
 ```
 
 ### Overview
@@ -50,20 +50,6 @@ This site serves to be a small data analysis experiment on the CUMTD (Champaign-
 5. Display bus delays by location
 6. Help users choose a bus by visually displaying bus delays, arrival times, and locations on a map
 
-```{r, echo=FALSE}
-inputPanel(
-        dateInput(
-                inputId = "date", 
-                value = as.character(Sys.Date()), 
-                min = "2018-12-01", max=as.character(Sys.Date()),
-                format = "%m-%d-%Y",
-                weekstart = 0,
-                language = "EN",
-                autoclose = TRUE,
-                label = "Choose a date"
-        )
-)
-```
 ## {.tabset}
 
 ### Plotting delay vs. time of day
@@ -73,26 +59,22 @@ Below data was last updated `r format(Sys.time(), "%B %d, %Y at %H:%M:%S", tz="A
 We can figure out if there is a difference in the delay of buses by time of the day. Maybe traffic at certain times of the day create more delays for the buses?
 
 ```{r time_of_day_plot}
-renderPlot({
-        date <- input$date
-        arrTimeDates <- sapply(all_times, function(time) {paste(date, time)})
-        arrPOSIX <- as.POSIXct(arrTimeDates, format="%Y-%m-%d %H:%M:%S", origin="1960-01-01")
-        cols <- rep(1, length(all_delays))
-        cols[all_delays == 0] <- 2
-        
-        
-        plot(all_delays ~ arrPOSIX, xlab="Actual Arrival Time (CDT)", ylab="Delay (sec)", main=paste("Delay of buses over Time of Day on", date), las=1, pch=20, col=cols)
-        axis.POSIXct(1, x=arrPOSIX)
-        
-        
-        # add vertical lines to show beginning of hour, in case variation was higher at the beginnning of the hour
-        lines <- as.POSIXct(sapply(seq(0, 24, 1), function (time) {paste(date, time)}), format="%Y-%m-%d %H")
-        abline(v=lines)
-        
-        # linear model
-        fit <- lm(all_delays ~ arrPOSIX)
-        abline(fit, col="BLUE", lwd=3)
-})
+arrTimeDates <- sapply(all_times, function(time) {paste(date, time)})
+arrPOSIX <- as.POSIXct(arrTimeDates, format="%Y-%m-%d %H:%M:%S", origin="1960-01-01")
+cols <- rep(1, length(all_delays))
+cols[all_delays == 0] <- 2
+
+plot(all_delays ~ arrPOSIX, xlab="Actual Arrival Time (CDT)", ylab="Delay (sec)", main=paste("Delay of buses over Time of Day on", date), las=1, pch=20, col=cols)
+axis.POSIXct(1, x=arrPOSIX)
+
+
+# add vertical lines to show beginning of hour, in case variation was higher at the beginnning of the hour
+lines <- as.POSIXct(sapply(seq(0, 24, 1), function (time) {paste(date, time)}), format="%Y-%m-%d %H")
+abline(v=lines)
+
+# linear model
+fit <- lm(all_delays ~ arrPOSIX)
+abline(fit, col="BLUE", lwd=3)
 
 # technically shouldn't be correlated? need more data to prove (could be sample size causing less variability)
 summary(fit)
@@ -109,31 +91,28 @@ $$\sigma_{delays} = `r round(sd(all_delays), 2)`$$
 $$n = `r length(all_delays)`$$
 
 ``` {r all_delays}
-renderPlot({
-        delays_hist <- hist(all_delays, freq=FALSE, breaks=500, main=paste0("Delay of all bus arrivals (collected on ", date, ")"), xlab="Delay of bus arrivals (seconds)")
-})
+delays_hist <- hist(all_delays, freq=FALSE, breaks=500, main=paste0("Delay of all bus arrivals (collected on ", date, ")"), xlab="Delay of bus arrivals (seconds)")
 ```
 
 Since the number of 0's (buses that arrived exactly on time- $estimated - scheduled = 0$) is so high, here is a zoomed in version of the same graph. The red bar is the bar containing all 0 values (buses that arrived exactly on time). There may be a preference towards showing a "0" value as opposed to other values, as shown in the histogram, but a definitive answer is unknown.
 
 ``` {r all_delays_zoom}
-renderPlot({
-        # 95% of all values within 1.96 SDs of mean
-        xlim <- c(-1.96, 1.96) * sd(all_delays) + mean(all_delays)
-        # find second highest peak and make that the highest
-        ylim <- c(0, sort(delays_hist$density, decreasing=TRUE)[2])
-        cols <- rep(NULL, length(delays_hist$breaks))
-        cols[delays_hist$breaks==0] <- "red"
-        hist(all_delays,
-             freq=FALSE,
-             col=cols,
-             right=FALSE,
-             breaks=500, 
-             main=paste0("Delay of all bus arrivals (zoomed in) (collected on ", date, ")"), 
-             xlab="Delay of bus arrivals (seconds)", 
-             xlim=xlim, 
-             ylim=ylim)
-})
+
+# 95% of all values within 1.96 SDs of mean
+xlim <- c(-1.96, 1.96) * sd(all_delays) + mean(all_delays)
+# find second highest peak and make that the highest
+ylim <- c(0, sort(delays_hist$density, decreasing=TRUE)[2])
+cols <- rep(NULL, length(delays_hist$breaks))
+cols[delays_hist$breaks==0] <- "red"
+hist(all_delays,
+     freq=FALSE,
+     col=cols,
+     right=FALSE,
+     breaks=500, 
+     main=paste0("Delay of all bus arrivals (zoomed in) (collected on ", date, ")"), 
+     xlab="Delay of bus arrivals (seconds)", 
+     xlim=xlim, 
+     ylim=ylim)
 ```
 
 ### Plotting by bus route
@@ -141,28 +120,27 @@ renderPlot({
 There are a lot of bus routes, so maybe that is a confounder? Maybe some bus routes have higher rates of being late?
 
 ```{r delays_by_route, fig.height=8, fig.width=8}
-renderPlot({
-        data <- all_delays
-        confint95 <- c(-1.96, 1.96) * sd(data, na.rm=TRUE) + mean(data, na.rm=TRUE)
-        filter <- data < confint95[2] & data > confint95[1]
-        sorted_routes <- order(unique(all_routes[filter]))
-        y <- data[filter]
-        x <- all_routes[filter]
-        breaks <- seq(confint95[1], confint95[2], length.out=500)
-        histogram(~y | x,
-                  xlab="Delay of bus arrivals (seconds)",
-                  xlim=c(confint95[1],confint95[2]),
-                  ylim=c(0,5),
-                  breaks=breaks,
-                  main=paste0("Delay of bus arrivals by bus routes (collected on ", date, ")"),
-                  par.strip.text=list(cex=0.5),
-                  layout=c(5, ceiling(length(sorted_routes) / 5)),
-                  panel=function(x,...) {
-                      panel.histogram(x,...)
-                      panel.text(confint95[2]*0.8,4,
-                          labels=paste0(
-                              'mean: ', round(mean(x), 2), '\nsd: ', round(sd(x), 2), '\nn: ', length(x)),
-                                     cex=0.3)
-                  })
-})
+
+data <- all_delays
+confint95 <- c(-1.96, 1.96) * sd(data, na.rm=TRUE) + mean(data, na.rm=TRUE)
+filter <- data < confint95[2] & data > confint95[1]
+sorted_routes <- order(unique(all_routes[filter]))
+y <- data[filter]
+x <- all_routes[filter]
+breaks <- seq(confint95[1], confint95[2], length.out=500)
+histogram(~y | x,
+          xlab="Delay of bus arrivals (seconds)",
+          xlim=c(confint95[1],confint95[2]),
+          ylim=c(0,5),
+          breaks=breaks,
+          main=paste0("Delay of bus arrivals by bus routes (collected on ", date, ")"),
+          par.strip.text=list(cex=0.5),
+          layout=c(5, ceiling(length(sorted_routes) / 5)),
+          panel=function(x,...) {
+              panel.histogram(x,...)
+              panel.text(confint95[2]*0.8,4,
+                  labels=paste0(
+                      'mean: ', round(mean(x), 2), '\nsd: ', round(sd(x), 2), '\nn: ', length(x)),
+                             cex=0.3)
+          })
 ```
