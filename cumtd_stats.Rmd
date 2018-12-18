@@ -149,6 +149,7 @@ histogram(~y | x,
 library(magrittr)
 library(tidyverse)
 library(plotly)
+library(shiny)
 con <- DBI::dbConnect(RSQLite::SQLite(), db_file)
 
 stop_times <- tbl(con, "stop_times")
