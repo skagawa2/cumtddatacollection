@@ -155,51 +155,59 @@ stop_times <- tbl(con, "stop_times")
 ```
 
 ```{r, echo=FALSE, messages=FALSE}
-inputPanel(
-        dateInput("dateInput", 
-                  label="Select a Date:",
-                  min="2018-12-01",
-                  max=as.character(Sys.Date()),
-                  language="EN",
-                  value=as.character(Sys.Date())),
-        sliderInput("binwidth",
-                    "Bin Width:",
-                    min=1, max=100,
-                    value=1,
-                    step=1)
+shinyApp(ui = fluidPage(
+        inputPanel(
+                dateInput("dateInput", 
+                          label="Select a Date:",
+                          min="2018-12-01",
+                          max=as.character(Sys.Date()),
+                          language="EN",
+                          value=as.character(Sys.Date())),
+                sliderInput("binwidth",
+                            "Bin Width:",
+                            min=1, max=100,
+                            value=1,
+                            step=1)
+                
+        ),
+        plotlyOutput('allBuses', width = '100%'),
         
-)
-plotlyOutput('allBuses', width = '100%')
-output$allBuses <- renderPlotly({
-        dateChar <- as.character(
-                as.Date(input$dateInput, origin="1970-01-01"))
-        stop_times %>%
-                ggplot(aes_string(x=as.symbol(dateChar))) + 
-                geom_histogram(binwidth=input$binwidth) +
-                labs(x="Delay", y="Count",
-                     title=paste0("Delays for all buses on ", dateChar))
-})
-
-inputPanel(
-        selectInput("routeId",
-            label="Select a bus route:",
-            choices=stop_times %>%
-                    distinct(route_id) %>%
-                    pull(route_id),
-            selected="ILLINI")
+        inputPanel(
+                selectInput("routeId",
+                    label="Select a bus route:",
+                    choices=stop_times %>%
+                            distinct(route_id) %>%
+                            pull(route_id),
+                    selected="ILLINI")
+                
+        ),
+        plotlyOutput('onlyBus', width = '100%')
+        ),
         
+        server = function(input, output) {
+                output$allBuses <- renderPlotly({
+                        dateChar <- as.character(
+                                as.Date(input$dateInput, origin="1970-01-01"))
+                        stop_times %>%
+                                ggplot(aes_string(x=as.symbol(dateChar))) + 
+                                geom_histogram(binwidth=input$binwidth) +
+                                labs(x="Delay", y="Count",
+                                     title=paste0("Delays for all buses on ", dateChar))
+                })
+                output$onlyBus <- renderPlotly({
+                        dateChar <- as.character(
+                                as.Date(input$dateInput, origin="1970-01-01"))
+                        stop_times %>%
+                                filter(route_id==input$routeId) %>%
+                                ggplot(aes_string(x=as.symbol(dateChar))) +
+                                        geom_histogram(binwidth=1) + 
+                                        labs(x="Delay", y="Count",
+                                             title=paste0("Delays for ", input$routeId, " on ", dateChar))
+                })
+        },
+        
+        options = list(height = '1200px')
 )
-plotlyOutput('onlyBus', width = '100%')
-output$onlyBus <- renderPlotly({
-        dateChar <- as.character(
-                as.Date(input$dateInput, origin="1970-01-01"))
-        stop_times %>%
-                filter(route_id==input$routeId) %>%
-                ggplot(aes_string(x=as.symbol(dateChar))) +
-                        geom_histogram(binwidth=1) + 
-                        labs(x="Delay", y="Count",
-                             title=paste0("Delays for ", input$routeId, " on ", dateChar))
-})
 ```
 
 
