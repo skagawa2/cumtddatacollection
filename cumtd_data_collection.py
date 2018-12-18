@@ -38,7 +38,6 @@ def cumtd_request_url(methodname, other_args={}, version=VERSION, output=OUTPUT_
 		url = url + "&{}={}".format(param, value)
 	return url
 
-
 # arrange into csv
 def generate_all_stops_csv(filename):
     if filename in os.listdir(): 
