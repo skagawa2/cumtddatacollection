@@ -73,23 +73,25 @@ Below data was last updated `r format(Sys.time(), "%B %d, %Y at %H:%M:%S", tz="A
 We can figure out if there is a difference in the delay of buses by time of the day. Maybe traffic at certain times of the day create more delays for the buses?
 
 ```{r time_of_day_plot}
-arrTimeDates <- sapply(all_times, function(time) {paste(date, time)})
-arrPOSIX <- as.POSIXct(arrTimeDates, format="%Y-%m-%d %H:%M:%S", origin="1960-01-01")
-cols <- rep(1, length(all_delays))
-cols[all_delays == 0] <- 2
-
 renderPlot{
+        arrTimeDates <- sapply(all_times, function(time) {paste(date, time)})
+        arrPOSIX <- as.POSIXct(arrTimeDates, format="%Y-%m-%d %H:%M:%S", origin="1960-01-01")
+        cols <- rep(1, length(all_delays))
+        cols[all_delays == 0] <- 2
+        
+        
         plot(all_delays ~ arrPOSIX, xlab="Actual Arrival Time (CDT)", ylab="Delay (sec)", main=paste("Delay of buses over Time of Day on", date), las=1, pch=20, col=cols)
         axis.POSIXct(1, x=arrPOSIX)
+        
+        
+        # add vertical lines to show beginning of hour, in case variation was higher at the beginnning of the hour
+        lines <- as.POSIXct(sapply(seq(0, 24, 1), function (time) {paste(date, time)}), format="%Y-%m-%d %H")
+        abline(v=lines)
+        
+        # linear model
+        fit <- lm(all_delays ~ arrPOSIX)
+        abline(fit, col="BLUE", lwd=3)
 }
-
-# add vertical lines to show beginning of hour, in case variation was higher at the beginnning of the hour
-lines <- as.POSIXct(sapply(seq(0, 24, 1), function (time) {paste(date, time)}), format="%Y-%m-%d %H")
-abline(v=lines)
-
-# linear model
-fit <- lm(all_delays ~ arrPOSIX)
-abline(fit, col="BLUE", lwd=3)
 
 # technically shouldn't be correlated? need more data to prove (could be sample size causing less variability)
 summary(fit)
