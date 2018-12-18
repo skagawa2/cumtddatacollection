@@ -73,7 +73,8 @@ Below data was last updated `r format(Sys.time(), "%B %d, %Y at %H:%M:%S", tz="A
 We can figure out if there is a difference in the delay of buses by time of the day. Maybe traffic at certain times of the day create more delays for the buses?
 
 ```{r time_of_day_plot}
-renderPlot{
+renderPlot({
+        date <- input$date
         arrTimeDates <- sapply(all_times, function(time) {paste(date, time)})
         arrPOSIX <- as.POSIXct(arrTimeDates, format="%Y-%m-%d %H:%M:%S", origin="1960-01-01")
         cols <- rep(1, length(all_delays))
@@ -91,7 +92,7 @@ renderPlot{
         # linear model
         fit <- lm(all_delays ~ arrPOSIX)
         abline(fit, col="BLUE", lwd=3)
-}
+})
 
 # technically shouldn't be correlated? need more data to prove (could be sample size causing less variability)
 summary(fit)
@@ -108,27 +109,31 @@ $$\sigma_{delays} = `r round(sd(all_delays), 2)`$$
 $$n = `r length(all_delays)`$$
 
 ``` {r all_delays}
-delays_hist <- hist(all_delays, freq=FALSE, breaks=500, main=paste0("Delay of all bus arrivals (collected on ", date, ")"), xlab="Delay of bus arrivals (seconds)")
+renderPlot({
+        delays_hist <- hist(all_delays, freq=FALSE, breaks=500, main=paste0("Delay of all bus arrivals (collected on ", date, ")"), xlab="Delay of bus arrivals (seconds)")
+})
 ```
 
 Since the number of 0's (buses that arrived exactly on time- $estimated - scheduled = 0$) is so high, here is a zoomed in version of the same graph. The red bar is the bar containing all 0 values (buses that arrived exactly on time). There may be a preference towards showing a "0" value as opposed to other values, as shown in the histogram, but a definitive answer is unknown.
 
 ``` {r all_delays_zoom}
-# 95% of all values within 1.96 SDs of mean
-xlim <- c(-1.96, 1.96) * sd(all_delays) + mean(all_delays)
-# find second highest peak and make that the highest
-ylim <- c(0, sort(delays_hist$density, decreasing=TRUE)[2])
-cols <- rep(NULL, length(delays_hist$breaks))
-cols[delays_hist$breaks==0] <- "red"
-hist(all_delays,
-     freq=FALSE,
-     col=cols,
-     right=FALSE,
-     breaks=500, 
-     main=paste0("Delay of all bus arrivals (zoomed in) (collected on ", date, ")"), 
-     xlab="Delay of bus arrivals (seconds)", 
-     xlim=xlim, 
-     ylim=ylim)
+renderPlot({
+        # 95% of all values within 1.96 SDs of mean
+        xlim <- c(-1.96, 1.96) * sd(all_delays) + mean(all_delays)
+        # find second highest peak and make that the highest
+        ylim <- c(0, sort(delays_hist$density, decreasing=TRUE)[2])
+        cols <- rep(NULL, length(delays_hist$breaks))
+        cols[delays_hist$breaks==0] <- "red"
+        hist(all_delays,
+             freq=FALSE,
+             col=cols,
+             right=FALSE,
+             breaks=500, 
+             main=paste0("Delay of all bus arrivals (zoomed in) (collected on ", date, ")"), 
+             xlab="Delay of bus arrivals (seconds)", 
+             xlim=xlim, 
+             ylim=ylim)
+})
 ```
 
 ### Plotting by bus route
@@ -136,26 +141,28 @@ hist(all_delays,
 There are a lot of bus routes, so maybe that is a confounder? Maybe some bus routes have higher rates of being late?
 
 ```{r delays_by_route, fig.height=8, fig.width=8}
-data <- all_delays
-confint95 <- c(-1.96, 1.96) * sd(data, na.rm=TRUE) + mean(data, na.rm=TRUE)
-filter <- data < confint95[2] & data > confint95[1]
-sorted_routes <- order(unique(all_routes[filter]))
-y <- data[filter]
-x <- all_routes[filter]
-breaks <- seq(confint95[1], confint95[2], length.out=500)
-histogram(~y | x,
-          xlab="Delay of bus arrivals (seconds)",
-          xlim=c(confint95[1],confint95[2]),
-          ylim=c(0,5),
-          breaks=breaks,
-          main=paste0("Delay of bus arrivals by bus routes (collected on ", date, ")"),
-          par.strip.text=list(cex=0.5),
-          layout=c(5, ceiling(length(sorted_routes) / 5)),
-          panel=function(x,...) {
-              panel.histogram(x,...)
-              panel.text(confint95[2]*0.8,4,
-                  labels=paste0(
-                      'mean: ', round(mean(x), 2), '\nsd: ', round(sd(x), 2), '\nn: ', length(x)),
-                             cex=0.3)
-          })
+renderPlot({
+        data <- all_delays
+        confint95 <- c(-1.96, 1.96) * sd(data, na.rm=TRUE) + mean(data, na.rm=TRUE)
+        filter <- data < confint95[2] & data > confint95[1]
+        sorted_routes <- order(unique(all_routes[filter]))
+        y <- data[filter]
+        x <- all_routes[filter]
+        breaks <- seq(confint95[1], confint95[2], length.out=500)
+        histogram(~y | x,
+                  xlab="Delay of bus arrivals (seconds)",
+                  xlim=c(confint95[1],confint95[2]),
+                  ylim=c(0,5),
+                  breaks=breaks,
+                  main=paste0("Delay of bus arrivals by bus routes (collected on ", date, ")"),
+                  par.strip.text=list(cex=0.5),
+                  layout=c(5, ceiling(length(sorted_routes) / 5)),
+                  panel=function(x,...) {
+                      panel.histogram(x,...)
+                      panel.text(confint95[2]*0.8,4,
+                          labels=paste0(
+                              'mean: ', round(mean(x), 2), '\nsd: ', round(sd(x), 2), '\nn: ', length(x)),
+                                     cex=0.3)
+                  })
+})
 ```
