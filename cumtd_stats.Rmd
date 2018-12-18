@@ -35,8 +35,6 @@ if (exists("all_times")) {
 }
 ```
 
-## {.tabset}
-
 ### Overview
 
 This site serves to be a small data analysis experiment on the CUMTD (Champaign-Urbana Mass Transit District) bus system. Originally started out as a project to accurately predict the times that the buses would arrive (since Google Maps doesn't), this site has evolved to show more statistics on more specific parts of the bus system and its API.
@@ -49,9 +47,26 @@ This site serves to be a small data analysis experiment on the CUMTD (Champaign-
 5. Display bus delays by location
 6. Help users choose a bus by visually displaying bus delays, arrival times, and locations on a map
 
-<h3>Below data was last updated `r format(Sys.time(), "%B %d, %Y at %H:%M:%S", tz="America/Chicago")`</h3>
+```{r, echo=FALSE}
+inputPanel(
+        dateInput(
+                inputId = "date", 
+                value = as.character(Sys.Date()), 
+                min = "2018-12-01", max=as.character(Sys.Date()),
+                format = "%m-%d-%Y",
+                weekstart = 0,
+                language = "EN",
+                autoclose = TRUE,
+                label = "Choose a date"
+        )
+)
+date <- input$date
+```
+## {.tabset}
 
 ### Plotting delay vs. time of day
+
+Below data was last updated `r format(Sys.time(), "%B %d, %Y at %H:%M:%S", tz="America/Chicago")`
 
 We can figure out if there is a difference in the delay of buses by time of the day. Maybe traffic at certain times of the day create more delays for the buses?
 
