@@ -154,7 +154,7 @@ con <- DBI::dbConnect(RSQLite::SQLite(), db_file)
 stop_times <- tbl(con, "stop_times")
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, messages=FALSE}
 inputPanel(
         dateInput("dateInput", 
                   label="Select a Date:",
@@ -167,8 +167,10 @@ inputPanel(
                     min=1, max=100,
                     value=1,
                     step=1)
+        
 )
-renderPlotly({
+plotlyOutput('allBuses', width = '100%')
+output$allBuses <- renderPlotly({
         dateChar <- as.character(
                 as.Date(input$dateInput, origin="1970-01-01"))
         stop_times %>%
@@ -178,14 +180,17 @@ renderPlotly({
                      title=paste0("Delays for all buses on ", dateChar))
 })
 
-selectInput("routeId",
+inputPanel(
+        selectInput("routeId",
             label="Select a bus route:",
             choices=stop_times %>%
                     distinct(route_id) %>%
                     pull(route_id),
-            selected="ILLINI"
+            selected="ILLINI")
+        
 )
-renderPlotly({
+plotlyOutput('onlyBus', width = '100%')
+output$onlyBus <- renderPlotly({
         dateChar <- as.character(
                 as.Date(input$dateInput, origin="1970-01-01"))
         stop_times %>%
