@@ -1,10 +1,10 @@
 --- 
-output: 
-  html_document: 
-    highlight: tango
-    theme: sandstone
-runtime: shiny
 title: "CUMTD Data Collection"
+output: 
+  html_document:
+    theme: united
+    highlight: tango
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -179,7 +179,7 @@ selectInput("routeId",
 plotlyOutput("onlyBus")
 ```
 
-```{r, echo=FALSE, messages=FALSE, context="server"}
+```{r, context="server"}
 output$allBuses = renderPlotly({
         dateChar <- as.character(
                 as.Date(input$dateInput, origin="1970-01-01"))
