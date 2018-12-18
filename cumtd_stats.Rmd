@@ -11,6 +11,9 @@ title: "CUMTD Data Collection"
 knitr::opts_chunk$set(echo = TRUE)
 library(DBI)
 library(lattice)
+library(shiny)
+library(magrittr)
+library(tidyverse)
 db_file <- "../../data/cumtddatacollection/stop_times.db"
 conn <- dbConnect(RSQLite::SQLite(), db_file)
 date <- as.character(Sys.Date())
@@ -60,7 +63,6 @@ inputPanel(
                 label = "Choose a date"
         )
 )
-date <- input$date
 ```
 ## {.tabset}
 
@@ -75,8 +77,11 @@ arrTimeDates <- sapply(all_times, function(time) {paste(date, time)})
 arrPOSIX <- as.POSIXct(arrTimeDates, format="%Y-%m-%d %H:%M:%S", origin="1960-01-01")
 cols <- rep(1, length(all_delays))
 cols[all_delays == 0] <- 2
-plot(all_delays ~ arrPOSIX, xlab="Actual Arrival Time (CDT)", ylab="Delay (sec)", main=paste("Delay of buses over Time of Day on", date), las=1, pch=20, col=cols)
-axis.POSIXct(1, x=arrPOSIX)
+
+renderPlot{
+        plot(all_delays ~ arrPOSIX, xlab="Actual Arrival Time (CDT)", ylab="Delay (sec)", main=paste("Delay of buses over Time of Day on", date), las=1, pch=20, col=cols)
+        axis.POSIXct(1, x=arrPOSIX)
+}
 
 # add vertical lines to show beginning of hour, in case variation was higher at the beginnning of the hour
 lines <- as.POSIXct(sapply(seq(0, 24, 1), function (time) {paste(date, time)}), format="%Y-%m-%d %H")
