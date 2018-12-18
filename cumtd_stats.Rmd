@@ -144,11 +144,11 @@ histogram(~y | x,
 ```
 
 ### Explore for yourself!
+
 ```{r setup2, echo=FALSE}
 library(magrittr)
 library(tidyverse)
 library(plotly)
-library(shiny)
 con <- DBI::dbConnect(RSQLite::SQLite(), db_file)
 
 stop_times <- tbl(con, "stop_times")
@@ -156,19 +156,27 @@ stop_times <- tbl(con, "stop_times")
 
 ```{r, echo=FALSE}
 inputPanel(
-        dateInput("dateInput", 
-                  label="Select a Date:",
-                  min="2018-12-01",
-                  max=as.character(Sys.Date()),
-                  language="EN",
-                  value=as.character(Sys.Date())),
-        sliderInput("binwidth",
-                    "Bin Width:",
-                    min=1, max=100,
-                    value=1,
-                    step=1)
-)
-plotlyOutput("allBuses")
+	dateInput("dateInput", 
+		  label="Select a Date:",
+		  min="2018-12-01",
+		  max=as.character(Sys.Date()),
+		  language="EN",
+		  value=as.character(Sys.Date())),
+	sliderInput("binwidth",
+		    "Bin Width:",
+		    min=1, max=100,
+		    value=1,
+		    step=1)
+renderPlotly({
+	dateChar <- as.character(
+		as.Date(input$dateInput, origin="1970-01-01"))
+	stop_times %>%
+		ggplot(aes_string(x=as.symbol(dateChar))) + 
+		geom_histogram(binwidth=input$binwidth) +
+		labs(x="Delay", y="Count",
+		     title=paste0("Delays for all buses on ", dateChar))
+})
+
 selectInput("routeId",
             label="Select a bus route:",
             choices=stop_times %>%
@@ -176,21 +184,7 @@ selectInput("routeId",
                     pull(route_id),
             selected="ILLINI"
 )
-plotlyOutput("onlyBus")
-```
-
-```{r, context="server"}
-output$allBuses = renderPlotly({
-        dateChar <- as.character(
-                as.Date(input$dateInput, origin="1970-01-01"))
-        stop_times %>%
-                ggplot(aes_string(x=as.symbol(dateChar))) + 
-                geom_histogram(binwidth=input$binwidth) +
-                labs(x="Delay", y="Count",
-                     title=paste0("Delays for all buses on ", dateChar))
-})
-        
-output$onlyBus = renderPlotly({
+renderPlotly({
         dateChar <- as.character(
                 as.Date(input$dateInput, origin="1970-01-01"))
         stop_times %>%
