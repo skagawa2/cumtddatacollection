@@ -179,7 +179,7 @@ selectInput("routeId",
 plotlyOutput("onlyBus")
 ```
 
-```{r, echo=FALSE, messages=FALSE, context="render"}
+```{r, echo=FALSE, messages=FALSE, context="server"}
 output$allBuses = renderPlotly({
         dateChar <- as.character(
                 as.Date(input$dateInput, origin="1970-01-01"))
