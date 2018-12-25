@@ -1,0 +1,274 @@
+---
+title: "CUMTD Data Collection"
+author: "Shaw Kagawa"
+output: 
+  html_document:
+    theme: united
+    highlight: tango
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DBI)
+library(magrittr)
+library(tidyverse)
+library(plotly)
+library(reshape)
+db_file <- "stop_times.db"
+con <- DBI::dbConnect(RSQLite::SQLite(), db_file)
+
+stop_times <- tbl(con, "stop_times")
+```
+
+## Data Exploration {.tabset}
+### Format
+<h3>Format</h3>
+(Collected from CUMTD's API- see [CUMTD Developer Resources](https://developer.cumtd.com))
+```{r, echo=FALSE}
+renderTable({
+        stop_times %>% 
+                select(trip_id:route_id, `2018-12-03`:`2018-12-06`) %>% 
+                as.tibble() %>%
+                sample_n(5)
+})
+```
+The data has observations for each departure in the CUMTD system, with a trip_id (unique
+to each sequence of stops within the route), an arrival_time, a stop_id 
+(which shows which stop the arrival is at), and a route_id (the route displayed on the 
+headsign of the bus: 'ILLINI', 'GOLDHOPPER', etc.).  
+The consecutive rows are appended as each day's trips are logged, and is an integer 
+showing how many seconds the specific arrival was late or early (negative integer meaning
+the arrival was early, positive meaning the arrival was late).
+  
+
+### Delays by Bus Route
+We can graph all of the delays by bus route and sort them by average delay on a specific 
+day.
+```{r, echo=FALSE}
+dateInput("dateInput", label="Choose a Date:", min="2018-12-01", max=Sys.Date(), value=Sys.Date())
+
+renderPlotly({ 
+        date <- as.character(as.Date(input$dateInput))
+        dateColumn <- as.symbol(date)
+        stop_times %>%
+                group_by(route_id) %>%
+                select(date) %>%
+                summarise_all(mean, na.rm=TRUE) %>%
+                filter(dateColumn != "NA") %>%
+                mutate(minutes=dateColumn / 60) %>%
+                ggplot(aes(x=fct_reorder(route_id, desc(minutes)), y=minutes)) +
+                        geom_col() +
+                        coord_flip() +
+                        labs(x="Bus Route", 
+                             y="Average Delay (minutes) (<0 = early, >0 = late)",
+                             title=paste("Average Bus Delay by Bus Route on", date))
+})
+```
+
+But maybe this may be inaccurate due to error bars.
+ 
+
+### Delays by Date
+We can graph the delays by bus route by day, and find any days where delays might be 
+an outlier.
+```{r, echo=FALSE}
+renderUI({
+        selectInput(inputId="busRoute", 
+                    label="Choose a Bus Route:", 
+                    choices=getBusRoutes(),
+                    selected="ILLINI")
+})
+   
+renderPlotly({
+        stop_times %>%
+                filter(route_id==input$busRoute) %>%
+                select(`2018-12-01`:as.character(Sys.Date())) %>%
+                summarise_all(mean, na.rm=TRUE) %>%
+                as.tibble() %>%
+                gather(date, delay) %>%
+                mutate(date=lubridate::ymd(date), delay=delay/60) %>%
+                ggplot(aes(x=date, y=delay)) +
+                        geom_col() +
+                        scale_x_date() +
+                        labs(x="Date", 
+                             y="Average Delay (minutes)",
+                             title=paste("Average Delay by Day for", input$busRoute))
+})
+```
+
+##
+***
+
+## Hypothesis Testing {.tabset}
+### Delays by Bus Route
+We can figure out if a certain bus route has a significantly different mean delay 
+compared to the other bus routes.
+
+Here are summary stats for all bus routes ordered by number of departures:
+```{r, echo=FALSE}
+dateInput("dateInput2",
+          label="Choose a Date:",
+          min="2018-12-01", max=Sys.Date(),
+          value=Sys.Date())
+
+DT::renderDataTable({ 
+        date <- as.character(as.Date(input$dateInput2))
+        dateColumn <- as.symbol(date)
+        stop_times %>%
+                group_by(route_id) %>%
+                select(route_id, date) %>%
+                mutate(delay=dateColumn) %>%
+                filter(delay != "NA") %>%
+                summarise(num_departures=n(),
+                          mean=mean(delay, na.rm=TRUE), 
+                          sample_sd=sd(delay, na.rm=TRUE)) %>%
+                arrange(desc(num_departures), mean) %>%
+                as.data.frame()
+})
+```
+
+Kruskal-Wallis test on the bus route delays:
+```{r, echo=FALSE}
+renderPrint({
+        date <- as.character(as.Date(input$dateInput2))
+        dateColumn <- as.symbol(date)
+        data <- stop_times %>%
+                group_by(route_id) %>%
+                select(date) %>%
+                mutate(delay=dateColumn) %>%
+                filter(delay != "NA") %>%
+                select(delay) %>%
+                as.data.frame()
+        data$route_id <- as.factor(data$route_id)
+        with(data, kruskal.test(delay, route_id))
+})
+```
+
+Pairwise Wilcox Mann-Whitney U Test on bus delays to find significantly different routes
+```{r, echo=FALSE}
+renderPrint({
+        date <- as.character(as.Date(input$dateInput2))
+        dateColumn <- as.symbol(date)
+        data <- stop_times %>%
+                group_by(route_id) %>%
+                select(date) %>%
+                mutate(delay=dateColumn) %>%
+                filter(delay != "NA") %>%
+                select(delay) %>%
+                as.data.frame()
+        data$route_id <- as.factor(data$route_id)
+        test <- with(data, pairwise.wilcox.test(delay, route_id, 
+                                        p.adjust="bonferroni"))
+        significant_routes <- melt(test[[3]]) %>%
+                filter(value < 0.05 & value != "NA") %>%
+                pull(X1) %>%
+                unique()
+        levels(significant_routes)
+})
+```
+
+Because of the varying sample sizes, most of the routes become "significant" even though they 
+may not be.
+
+### Delays by Date
+We can figure out if some delays are unexpectedly high at certain times of day.
+```{r, echo=FALSE}
+getBusRoutes <- reactive({
+        date <- as.character(as.Date(input$dateInput3))
+        dateColumn <- as.symbol(date)
+        routes <- stop_times %>%
+                        group_by(route_id) %>%
+                        select(route_id, date) %>%
+                        mutate(delay=dateColumn) %>%
+                        filter(delay != "NA") %>%
+                        ungroup() %>%
+                        distinct(route_id) %>%
+                        pull()
+        return(routes)
+})
+
+inputPanel(
+        dateInput("dateInput3",
+                  label="Choose a Date:",
+                  min="2018-12-01", max=Sys.Date(),
+                  value=Sys.Date()),
+        renderUI({
+                selectInput(inputId="busRoute2", 
+                            label="Choose a Bus Route:", 
+                            choices=getBusRoutes(),
+                            selected="ILLINI")
+        })
+)
+
+renderPlotly({
+        date <- as.character(as.Date(input$dateInput3))
+        dateColumn <- as.symbol(date)
+        hours <- stop_times %>%
+                filter(route_id==input$busRoute2 & dateColumn != "NA") %>%
+                pull(arrival_time) %>% 
+                stringr::str_sub(1, 2) %>% 
+                as.factor()
+        delays <- stop_times %>%
+                filter(route_id==input$busRoute2) %>%
+                select(date) %>%
+                mutate(delay=dateColumn / 60) %>%
+                filter(delay != "NA") %>%
+                select(delay)
+        data.frame(delay=delays, hour=hours) %>%
+                ggplot(aes(x=hour, y=delay)) + 
+                        geom_violin() +
+                        labs(x="Hour of Day", y="Delay (minutes)",
+                             title=paste("Delays by hour of day for", input$busRoute2))
+})
+```
+
+Is there a statistical difference between the distributions of these times? Since these don't 
+seem to be normally distributed, we can use a nonparametric test to figure this out. (If this 
+fails, then there are probably too little data points to compare)
+```{r, echo=FALSE}
+renderPrint({
+        date <- as.character(as.Date(input$dateInput3))
+        dateColumn <- as.symbol(date)
+        hours <- stop_times %>%
+                filter(route_id==input$busRoute2 & dateColumn != "NA") %>%
+                pull(arrival_time) %>% 
+                stringr::str_sub(1, 2) %>% 
+                as.factor()
+        delays <- stop_times %>%
+                filter(route_id==input$busRoute2) %>%
+                select(date) %>%
+                mutate(delay=dateColumn / 60) %>%
+                filter(delay != "NA") %>%
+                pull(delay)
+        data <- data.frame(delay=delays, hour=hours)
+        with(data, kruskal.test(delay, hour))
+})
+```
+
+Pairwise Wilcox Mann-Whitney U Test on bus delays to find significantly different times of day
+```{r, echo=FALSE}
+renderPrint({
+        date <- as.character(as.Date(input$dateInput3))
+        dateColumn <- as.symbol(date)
+        hours <- stop_times %>%
+                filter(route_id==input$busRoute2 & dateColumn != "NA") %>%
+                pull(arrival_time) %>% 
+                stringr::str_sub(1, 2) %>% 
+                as.factor()
+        delays <- stop_times %>%
+                filter(route_id==input$busRoute2) %>%
+                select(date) %>%
+                mutate(delay=dateColumn / 60) %>%
+                filter(delay != "NA") %>%
+                pull(delay)
+        data <- data.frame(delay=delays, hour=hours)
+        test <- with(data, pairwise.wilcox.test(delay, hour, p.adjust.method = "bonferroni"))
+        melt(test[[3]]) %>%
+                filter(value < 0.05 & value != "NA") %>%
+                arrange(X1) %>%
+                pull(X1) %>%
+                unique()
+})
+```
+

@@ -3,3 +3,5 @@ cumtd_stats.html
 Rplots.pdf
 all_stops.csv
 __pycache__/*
+.Rhistory
+rsconnect/*
