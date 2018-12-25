@@ -13,7 +13,8 @@ library(DBI)
 library(lattice)
 db_file <- "stop_times.db"
 conn <- dbConnect(RSQLite::SQLite(), db_file)
-date <- as.character(Sys.Date())
+date <- "2018-12-10"
+# date <- as.character(Sys.Date())
 
 command <- paste0("SELECT arrival_time,\"", date, "\",route_id FROM stop_times WHERE \"", date, "\" IS NOT NULL")
 all_vals <- dbGetQuery(conn, command)
@@ -161,9 +162,9 @@ shinyApp(ui = fluidPage(
                 dateInput("dateInput", 
                           label="Select a Date:",
                           min="2018-12-01",
-                          max=as.character(Sys.Date()),
+                          max=as.character(date),
                           language="EN",
-                          value=as.character(Sys.Date())),
+                          value=as.character(date)),
                 sliderInput("binwidth",
                             "Bin Width:",
                             min=1, max=100,
