@@ -20,6 +20,19 @@ db_file <- "stop_times.db"
 con <- DBI::dbConnect(RSQLite::SQLite(), db_file)
 
 stop_times <- tbl(con, "stop_times", stringAsFactors=FALSE)
+
+colors <- read_csv("google_transit/routes.txt") %>%
+        select(route_id, route_color)
+
+routeToCol <- Vectorize(function(route_id) {
+        paste0("#", colors$route_color[colors$route_id==route_id])
+})
+stop_times %>% collect() %>% mutate(route_color=routeToCol(route_id))
+
+convertToSeconds <- function (X) {
+        X <- strsplit(X, ":")
+        sapply(X, function(Y) sum(as.numeric(Y) * c(3600, 60, 1)))
+}
 ```
 
 ## Data Exploration {.tabset}
@@ -51,33 +64,13 @@ all_times <- stop_times %>%
         select(route_id, start, end) %>%
         arrange(start) %>%
         group_by(route_id) %>%
-        summarise(min_start=min(start), max_end=max(end))
-
-colors <- read_csv("google_transit/routes.txt") %>%
-        select(route_id, route_color)
-
-for (i in 1:nrow(all_times)) {
-        route_color <- colors$route_color[colors$route_id==all_times$route_id[i]]
-        all_times$route_color[i] <- paste0("#", route_color)
-}
-
-grouped_times <- all_times %>% 
-        mutate(route=str_extract(route_id, "(?!([0-9]| )).[A-Z]+")
-#               day_of_week=if_else(str_detect(route_id, "SATURDAY|SUNDAY"), 
-#                           if_else(str_detect(route_id, "SATURDAY"), 
-#                                   "SATURDAY",
-#                                   "SUNDAY"), 
-#                           "WEEKDAY")
-        ) %>%
+        summarise(min_start=min(start), max_end=max(end)) %>%
+        mutate(route_color=routeToCol(route_id),
+               route=str_extract(route_id, "(?!([0-9]| )).[A-Z]+")) %>%
         group_by(route) %>%
         arrange(desc(min_start), .by_group=TRUE)
 
-convertToSeconds <- function (X) {
-        X <- strsplit(X, ":")
-        sapply(X, function(Y) sum(as.numeric(Y) * c(3600, 60, 1)))
-}
-
-ggplotly(grouped_times %>% {
+ggplotly(all_times %>% {
         ggplot(.) + 
                 geom_rect(aes(xmin=convertToSeconds(.$min_start), 
                               xmax=convertToSeconds(.$max_end), 
@@ -90,6 +83,9 @@ ggplotly(grouped_times %>% {
                           color="black",
                           size=0.05) +
                 labs(x='Time of Day', title='Running routes by time of day') +
+                theme(axis.title.y=element_blank(),
+                        axis.text.y=element_blank(),
+                        axis.ticks.y=element_blank()) +
                 scale_x_time(breaks=as.hms(c(paste0(seq(6,33,3), ":00:00"))))
 })
 ```
@@ -106,21 +102,28 @@ dateInput("dateInput2", label="Choose a Date:",
           max=tail(colnames(stop_times), n=1), 
           value=tail(colnames(stop_times), n=1))
 
-renderPlotly({ 
+renderPlotly({
         date <- as.character(as.Date(input$dateInput2))
-        dateColumn <- as.symbol(date)
-        stop_times %>%
+        ggplotly(stop_times %>%
                 group_by(route_id) %>%
                 select(date) %>%
                 summarise_all(mean, na.rm=TRUE) %>%
-                filter(dateColumn != "NA") %>%
-                mutate(minutes=dateColumn / 60) %>%
-                ggplot(aes(x=fct_reorder(route_id, desc(minutes)), y=minutes)) +
-                        geom_col() +
+                collect() %>%
+                filter(.[[date]] != "NA") %>%
+                mutate(route_color=routeToCol(route_id),
+                       minutes=.[[date]] / 60) %>%
+                arrange(minutes) %>% {
+                ggplot(.) +
+                        geom_col(aes(x=fct_reorder(.$route_id, .$minutes), y=.$minutes,
+                                     text=paste("Bus Route:", .$route_id,
+                                              "<br>Seconds:", round(.$minutes * 60, 1),
+                                              "<br>Minutes:", round(.$minutes, 2))),
+                                 fill=.$route_color) +
                         coord_flip() +
                         labs(x="Bus Route", 
                              y="Average Delay (minutes) (<0 = early, >0 = late)",
                              title=paste("Average Bus Delay by Bus Route on", date))
+                }, tooltip="text")
 })
 ```
 
@@ -220,20 +223,27 @@ renderPlotly({
         data$route_id <- as.factor(data$route_id)
         test <- with(data, pairwise.wilcox.test(delay, route_id, 
                                         p.adjust="bonferroni"))
-        melt(test[[3]]) %>%
-                group_by(X2) %>%
+        ggplotly(melt(test[[3]]) %>%
                 filter(value != "NA") %>%
+                group_by(X2) %>%
                 summarise(n=sum(value < 0.05)) %>%
-                mutate(hour=X2) %>% {
-                ggplot(., aes(x=fct_reorder(hour, n), y=n)) +
-                        geom_col(text=paste("Route:", .$route_id,
-                                            "<br>n:", .$n)) +
-                        labs(x="Route", 
-                             y="Number of significantly different routes to this hour",
-                             title="Measure of how different each hour is compared to other hours") +
+                mutate(route_color=routeToCol(X2)) %>%
+                arrange(n) %>% {
+                ggplot(.) +
+                        geom_col(aes(x=fct_reorder(.$X2, .$n), y=.$n,
+                                 text=paste("Route:", .$X2,
+                                            "<br>n:", .$n)),
+                             fill=.$route_color) +
                         coord_flip() +
-                        geom_hline(yintercept=length(levels(data$route_id)) / 2, col="RED")
-                }
+                        labs(x="Route", 
+                             y="Number of significantly different routes to this route",
+                             title="Measure of how different each route is compared to other routes") +
+                        coord_flip() +
+                        geom_hline(aes(text="\"Significance Level\" (half the # of routes)",
+                                       yintercept=length(levels(data$route_id)) / 2,
+                                       col="RED")) +
+                        theme(legend.position="none")
+                }, tooltip="text")
 })
 ```
 The next question is figuring out what level would be considered significantly different 
@@ -355,18 +365,22 @@ renderPlotly({
                 pull(delay)
         data <- data.frame(delay=delays, hour=hours)
         test <- with(data, pairwise.wilcox.test(delay, hour, p.adjust.method = "bonferroni"))
-         melt(test[[3]]) %>%
+        ggplotly(melt(test[[3]]) %>%
                 group_by(X2) %>%
                 filter(value != "NA") %>%
                 summarise(n=sum(value < 0.05)) %>%
                 mutate(hour=X2) %>%
-                ggplot(aes(x=hour, y=n)) +
+                ggplot(aes(x=hour, y=n, text=paste("Hour:", hour,
+                                                   "<br>n:", n))) +
                         geom_col() +
                         labs(x="Hour of Day", 
                              y="Number of significantly different hours to this hour",
                              title="Measure of how different each hour is compared to other hours", 
                              subtitle="Pairwise Wilcox Test") +
-                        geom_hline(yintercept=length(levels(hours)) / 2, col="RED")
+                        geom_hline(aes(text="\"Significance Level\" (half the # of observations)",
+                                       yintercept=length(levels(hours)) / 2, col="RED")) +
+                        theme(legend.position="none")
+        , tooltip="text")
 })
 ```
 The next question is figuring out what level would be considered significantly different 
