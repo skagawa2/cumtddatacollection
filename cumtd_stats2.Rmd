@@ -27,7 +27,6 @@ colors <- read_csv("google_transit/routes.txt") %>%
 routeToCol <- Vectorize(function(route_id) {
         paste0("#", colors$route_color[colors$route_id==route_id])
 })
-stop_times %>% collect() %>% mutate(route_color=routeToCol(route_id))
 
 convertToSeconds <- function (X) {
         X <- strsplit(X, ":")
