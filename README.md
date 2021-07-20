@@ -1,5 +1,5 @@
 # CUMTD Bus Delay Analysis
-see [CUMTD Data Analysis](https://shawkagawa.com/cumtddatacollection/) for live updates of this repo
+see [CUMTD Data Analysis](https://shawkagawa.com/cumtddatacollection/) for live updates of this repo (website down)
 
 ## Software Used
 
